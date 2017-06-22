@@ -1,8 +1,18 @@
-lazy val root = (project in file(".")).
-  settings(
-    name         := "organisation-dependency-graph",
-    version      := "1.0.0",
-    organization := "com.github.qualysis",
-    scalaVersion := "2.10.6",
-    sbtPlugin    := true
+lazy val commonSettings = Seq(
+    version      := "1.0.1",
+    organization := "com.github.qualysis"
+)
+
+lazy val root = (project in file("."))
+  .settings(
+      commonSettings,
+      sbtPlugin := true,
+      scalaVersion := "2.10.6",
+      name := "organisation-dependency-graph",
+      description := "Creates dependencies graph for given input organisation name.",
+      licenses in GlobalScope += "Apache License 2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0.html"),
+      publishMavenStyle := false,
+      bintrayRepository := "sbt-plugins",
+      bintrayOrganization in bintray := Some("qcl"),
+      crossScalaVersions := Seq("2.11.8","2.10.6")
   )
