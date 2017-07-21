@@ -1,6 +1,6 @@
 package qualysis
 
-import java.io.{BufferedWriter, FileWriter}
+import java.io._
 import java.net.URLEncoder
 import java.nio.file.{Files, Paths}
 import sbt._
@@ -13,10 +13,12 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
 
   val defaultTimeout   = 30000
   val currentDirectory = new java.io.File(".").getCanonicalPath
-  val fileLocation     = s"$currentDirectory\\target\\browse-dependency-graph\\"
+  val fileLocation     = s"$currentDirectory\\target\\"
+  val compileDotFile   = "dependencies-compile.dot"
   val inputFile        = "dependencies.dot"
-  val outputFile       = "dependencies.dot.js"
+  val jsOutputFile     = "dependencies.dot.js"
   val orgLines         = new ListBuffer[String]()
+  val graphHtmlFile    = new File(s"$currentDirectory\\src\\main\\resources\\graph.html")
 
   object autoImport {
     val organisationDSLGraph = inputKey[Unit]("Creates DSL graph for the organisationName passed as parameter.")
@@ -32,11 +34,35 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
   )
 
   def generateDSLDependencyGraph(organisationName: String): Unit = {
-    waitWhile(() => Files.exists(Paths.get(fileLocation + inputFile)), defaultTimeout)
+    copyGraphHtml(graphHtmlFile,new File(s"${fileLocation}graph.html"))
+    generateDotFile
+    generateJSFile(organisationName)
+  }
 
-    val dotFile = Source.fromFile(fileLocation + inputFile)
-    val outFile = new sbt.File(s"$fileLocation\\$outputFile")
-    val writer  = new BufferedWriter(new FileWriter(outFile))
+  def copyGraphHtml(source: File, destination: File) = {
+    new FileOutputStream(destination) getChannel() transferFrom(new FileInputStream(source) getChannel(), 0, Long.MaxValue )
+  }
+
+  def generateDotFile = {
+    waitWhile(() => Files.exists(Paths.get(fileLocation + compileDotFile)), defaultTimeout)
+    val inputDotFile  = Source.fromFile(fileLocation + compileDotFile)
+    val tempFile      = new File(fileLocation+"temp.dot")
+    val dotOutFile    = new sbt.File(s"$fileLocation\\$inputFile")
+    val printWriter   = new PrintWriter(tempFile)
+
+    inputDotFile.getLines
+      .map { x => if(x.contains("\"[label=<")) x.replace("\"[label=<","\"[labelType=\"html\" label=\"") else x }
+      .map { x => if(x.contains("> style=\"\"]")) x.replace("> style=\"\"]","\" style=\"\"]") else x }
+      .foreach(x => printWriter.println(x))
+    printWriter.close()
+    tempFile.renameTo(dotOutFile)
+  }
+
+  def generateJSFile(organisationName: String) = {
+    waitWhile(() => Files.exists(Paths.get(fileLocation + inputFile)), defaultTimeout)
+    val dotFile         = Source.fromFile(fileLocation + inputFile)
+    val outFile         = new sbt.File(s"$fileLocation\\$jsOutputFile")
+    val bufferedWriter  = new BufferedWriter(new FileWriter(outFile))
 
     dotFile.getLines.foreach { line =>
       if (line.trim.startsWith("\"")) {
@@ -54,9 +80,9 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
       }
     }
 
-    writer.write("data = \"" + URLEncoder.encode(orgLines.mkString, "UTF-8").replace("+", "%20") + "\";")
-    writer.flush()
-    writer.close()
+    bufferedWriter.write("data = \"" + URLEncoder.encode(orgLines.mkString, "UTF-8").replace("+", "%20") + "\";")
+    bufferedWriter.flush()
+    bufferedWriter.close()
   }
 }
 
