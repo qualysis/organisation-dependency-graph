@@ -3,6 +3,7 @@ package qualysis
 import java.io._
 import java.net.URLEncoder
 import java.nio.file.{Files, Paths}
+import scala.annotation.tailrec
 import sbt._
 import sbt.complete.DefaultParsers._
 import scala.collection.mutable.ListBuffer
@@ -13,12 +14,11 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
 
   val defaultTimeout   = 30000
   val currentDirectory = new java.io.File(".").getCanonicalPath
-  val fileLocation     = s"$currentDirectory\\target\\"
+  val targetLocation   = s"$currentDirectory\\target\\"
   val compileDotFile   = "dependencies-compile.dot"
   val inputFile        = "dependencies.dot"
   val jsOutputFile     = "dependencies.dot.js"
   val orgLines         = new ListBuffer[String]()
-  val graphHtmlFile    = new File(s"$currentDirectory\\src\\main\\resources\\graph.html")
 
   object autoImport {
     val organisationDSLGraph = inputKey[Unit]("Creates DSL graph for the organisationName passed as parameter.")
@@ -34,35 +34,58 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
   )
 
   def generateDSLDependencyGraph(organisationName: String): Unit = {
-    copyGraphHtml(graphHtmlFile,new File(s"${fileLocation}graph.html"))
+    copyFileFromJar(targetLocation, "graph.html")
     generateDotFile
     generateJSFile(organisationName)
   }
 
-  def copyGraphHtml(source: File, destination: File) = {
-    new FileOutputStream(destination) getChannel() transferFrom(new FileInputStream(source) getChannel(), 0, Long.MaxValue )
+  def copyFileFromJar(targetPath: String, fileToCopy: String) = {
+    val targetFolder = new File(targetPath)
+    targetFolder.mkdirs()
+    val graphHTML        = new File(targetFolder, fileToCopy)
+    val inputStream      = getClass.getClassLoader.getResourceAsStream(fileToCopy)
+    val fileOutputStream = new FileOutputStream(graphHTML)
+
+    copy(inputStream, fileOutputStream)
+    inputStream.close()
+    fileOutputStream.close()
+  }
+
+  def copy(inputStream: InputStream, outputStream: OutputStream) = {
+    val buffer = new Array[Byte](65536)
+
+    @tailrec def writeRecursive(): Unit = {
+      val data = inputStream.read(buffer)
+      if (data > 0) {
+        outputStream.write(buffer, 0, data)
+        writeRecursive()
+      } else if (data == 0)
+        throw new IllegalStateException("InputStream returned 0")
+    }
+    writeRecursive()
   }
 
   def generateDotFile = {
-    waitWhile(() => Files.exists(Paths.get(fileLocation + compileDotFile)), defaultTimeout)
-    val inputDotFile  = Source.fromFile(fileLocation + compileDotFile)
-    val tempFile      = new File(fileLocation+"temp.dot")
-    val dotOutFile    = new sbt.File(s"$fileLocation\\$inputFile")
-    val printWriter   = new PrintWriter(tempFile)
+    waitWhile(() => Files.exists(Paths.get(targetLocation + compileDotFile)), defaultTimeout)
+    val inputDotFile = Source.fromFile(targetLocation + compileDotFile)
+    val tempFile = new File(targetLocation + "temp.dot")
+    val dotOutFile = new sbt.File(s"$targetLocation\\$inputFile")
+    val printWriter = new PrintWriter(tempFile)
 
     inputDotFile.getLines
-      .map { x => if(x.contains("\"[label=<")) x.replace("\"[label=<","\"[labelType=\"html\" label=\"") else x }
-      .map { x => if(x.contains("> style=\"\"]")) x.replace("> style=\"\"]","\" style=\"\"]") else x }
+      .map { x => if (x.contains("\"[label=<")) x.replace("\"[label=<", "\"[labelType=\"html\" label=\"") else x }
+      .map { x => if (x.contains("> style=\"\"]")) x.replace("> style=\"\"]", "\" style=\"\"]") else x }
       .foreach(x => printWriter.println(x))
+    printWriter.flush()
     printWriter.close()
     tempFile.renameTo(dotOutFile)
   }
 
   def generateJSFile(organisationName: String) = {
-    waitWhile(() => Files.exists(Paths.get(fileLocation + inputFile)), defaultTimeout)
-    val dotFile         = Source.fromFile(fileLocation + inputFile)
-    val outFile         = new sbt.File(s"$fileLocation\\$jsOutputFile")
-    val bufferedWriter  = new BufferedWriter(new FileWriter(outFile))
+    waitWhile(() => Files.exists(Paths.get(targetLocation + inputFile)), defaultTimeout)
+    val dotFile = Source.fromFile(targetLocation + inputFile)
+    val outFile = new sbt.File(s"$targetLocation\\$jsOutputFile")
+    val bufferedWriter = new BufferedWriter(new FileWriter(outFile))
 
     dotFile.getLines.foreach { line =>
       if (line.trim.startsWith("\"")) {
@@ -71,7 +94,7 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
             orgLines.append(x)
           case x if x.trim.startsWith(s"""\"$organisationName""") && x.split("->").last.trim.startsWith(s"""\"$organisationName""") =>
             orgLines.append(x)
-          case x if  x.trim.startsWith(s"""\"$organisationName""") && !x.split("->").last.trim.startsWith(s"""\"$organisationName""") =>
+          case x if x.trim.startsWith(s"""\"$organisationName""") && !x.split("->").last.trim.startsWith(s"""\"$organisationName""") =>
           case x if !x.trim.startsWith(s"""\"$organisationName""") && x.trim.contains("labeltype=\"html\"") =>
           case _ =>
         }
