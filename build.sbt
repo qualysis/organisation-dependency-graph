@@ -1,5 +1,5 @@
 lazy val commonSettings = Seq(
-    version      := "1.0.2",
+    version      := "1.0.3",
     organization := "com.github.qualysis"
 )
 

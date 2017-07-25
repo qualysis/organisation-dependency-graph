@@ -74,7 +74,7 @@ object OrganisationDependencyGraphPlugin extends AutoPlugin {
 
     inputDotFile.getLines
       .map { x => if (x.contains("\"[label=<")) x.replace("\"[label=<", "\"[labelType=\"html\" label=\"") else x }
-      .map { x => if (x.contains("> style=\"\"]")) x.replace("> style=\"\"]", "\" style=\"\"]") else x }
+      .map { x => if (x.contains("> style=\"")) x.replace("> style=\"", "\" style=\"") else x }
       .foreach(x => printWriter.println(x))
     printWriter.flush()
     printWriter.close()
